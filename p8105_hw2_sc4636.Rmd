@@ -1,0 +1,181 @@
+---
+title: "p8105_hw2_sc4636"
+output: github_document
+---
+
+# Data Wrangling 1
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(readxl)
+
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+theme_set(theme_bw() + theme(legend.position = "bottom"))
+```
+
+## _Problem 1_
+
+* Read and clean the Mr. Trash Wheel sheet
+```{r, message = FALSE}
+mr_trash = read_excel("./data/Trash-Wheel-Collection-Totals-8-6-19.xlsx",
+                      range = "Mr. Trash Wheel!A2:N408") %>%
+  janitor::clean_names() %>%
+  rename(weight = weight_tons, volume = volume_cubic_yards) %>% 
+  drop_na(dumpster) %>%
+  mutate(sports_balls = as.integer(round(sports_balls)))
+```  
+
+* Read and clean precipitation data for 2017 and 2018
+
+```{r, message = FALSE}
+prcp_2017 = read_excel("./data/Trash-Wheel-Collection-Totals-8-6-19.xlsx",
+                       range = "2017 Precipitation!A2:B14") %>%
+  janitor::clean_names() %>% 
+  drop_na(total) %>% 
+  mutate(year = 2017)
+
+prcp_2018 = read_excel("./data/Trash-Wheel-Collection-Totals-8-6-19.xlsx",
+                       range = "2018 Precipitation!A2:B14") %>%
+  janitor::clean_names() %>% 
+  drop_na(total) %>% 
+  mutate(year = 2018)
+```
+
+* Combine the precipitation datasets
+
+```{r, message = FALSE}
+prcp_1817 = bind_rows(prcp_2017, prcp_2018) %>% 
+  mutate(month = month.name[month]) %>% 
+  arrange(month, year, total)
+```
+
+The tidied Mr. Trash Wheel dataset has `r nrow(mr_trash)` observations of `r ncol(mr_trash)` variables, and includes information on the dumpster number, date of collection, amount of total litter and litter type, with key variables such as _`r mr_trash %>% select(dumpster:volume) %>% colnames`_.
+
+The combined dataset for precipitation in 2017 and 2018 has `r nrow(prcp_1817)` observations of `r ncol(prcp_1817)` variables including _`r colnames(prcp_1817)`_. The total precipitation in 2018 was `r prcp_1817 %>% filter(year == 2018) %>% select(total) %>% colSums()`. The median number of sports balls in a dumpster in 2017 was `r mr_trash %>% filter(year == 2017) %>% pull(sports_balls) %>% median()`.
+
+## _Problem 2_
+
+* Clean the data in pols-month.csv
+
+```{r, message = FALSE}
+pols = read_csv("./data/pols-month.csv") %>% 
+  janitor::clean_names() %>% 
+  separate(mon, c("year", "month", "day"), "-") %>% 
+  mutate_if(is.character, as.numeric) %>% 
+  mutate(month = month.abb[month]) %>% 
+  mutate(president = if_else(prez_dem == 1, "dem", "gop")) %>% 
+  select(-prez_gop, -prez_dem, -day)
+```
+
+* Clean the data in snp.csv
+
+```{r, message = FALSE}
+snp = read_csv("./data/snp.csv") %>% 
+  janitor::clean_names() %>% 
+  separate(date, c("month", "day", "year"), "/") %>% 
+  mutate_if(is.character, as.numeric) %>% 
+  mutate(month = month.abb[month]) %>% 
+  select(year, month, -day, close)
+```
+
+* Clean the data in unemployment
+
+```{r, message = FALSE}
+unemploy = read_csv("./data/unemployment.csv") %>% 
+  pivot_longer(Jan:Dec, names_to = "month", values_to = "unemploy_pct") %>% 
+  janitor::clean_names()
+```  
+
+* Join the datasets
+
+```{r, message = FALSE}
+pols_snp = left_join(pols, snp, by = c("year", "month"))
+
+pols_snp_unemploy = left_join(pols_snp, unemploy, by = c("year", "month"))
+```
+
+The dataset `pols` contains `r nrow(pols)` observations of `r ncol(pols)` variables and includes information on the number of politicians at any given time with key variables _`r pols %>% select(year, month, president) %>% colnames`_. The year range for this dataset is `r pols %>% pull(year) %>% range()`.
+
+The dataset `snp` contains `r nrow(snp)` observations of `r ncol(snp)` variables with information of the closing values on given dates. It has variables _`r colnames(snp)`_. The year range for this dataset is `r snp %>% pull(year) %>% range()`.
+
+The dataset `unemployment` contains `r nrow(unemploy)` observations of `r ncol(unemploy)` variables indicating percentage of unemployment at different time with variables _`r colnames(unemploy)`_. The year range for this dataset is `r unemploy %>% pull(year) %>% range()`.
+
+The joined dataset contains `r nrow(pols_snp_unemploy)` observations of `r ncol(pols_snp_unemploy)` variables. It has key variables _`r pols_snp_unemploy %>% select(-gov_gop:-rep_dem) %>% colnames`_. The year range for this dataset is `r pols_snp_unemploy %>% pull(year) %>% range()`, the same as the dataset `pols`.
+
+## _Problem 3_
+
+* Load and tidy the data
+
+```{r, message = FALSE}
+baby_name = read_csv("./data/Popular_Baby_Names.csv") %>%
+  janitor::clean_names() %>% 
+  mutate_if(is.character, str_to_title) %>% 
+  mutate(ethnicity = recode(ethnicity,
+                            "Asian And Paci" = "Asian And Pacific Islander",
+                            "Black Non Hisp" = "Black Non Hispanic",
+                            "White Non Hisp" = "White Non Hispanic")) %>% 
+  distinct()
+```
+
+* Tables
+
+```{r}
+olivia_pop = baby_name %>% 
+  filter(childs_first_name == "Olivia") %>% 
+  select(ethnicity, year_of_birth, rank) %>%
+  pivot_wider(names_from = "year_of_birth", values_from = "rank")
+```
+
+```{r, echo = FALSE}
+olivia_pop %>% 
+  knitr::kable(
+    caption = "Table 1: Popularity of 'Olivia'",
+    col.names = c("Ethnicity", 2016:2011)
+  )
+```
+
+```{r}
+male_pop = baby_name %>% 
+  filter(gender == "Male", rank == "1") %>% 
+  select(ethnicity, year_of_birth, childs_first_name) %>% 
+  pivot_wider(names_from = "year_of_birth", values_from = "childs_first_name")
+```
+
+```{r, echo = FALSE}
+male_pop %>% 
+  knitr::kable(
+    caption = "Table 2: The most popular name for male children",
+    col.names = c("Ethnicity", 2016:2011)
+  )
+```
+
+* Scatter plot
+
+```{r, echo = FALSE}
+male_wnp_16 = baby_name %>% 
+  filter(
+    gender == "Male",
+    ethnicity == "White Non Hispanic",
+    year_of_birth == "2016") %>% 
+  ggplot(aes(x = rank, y = count, color = childs_first_name)) +
+  geom_point(alpha = .8) +
+  theme(legend.position = "none") +
+  labs(
+    title = "Popularity of baby names",
+    x = "Rank of popularity", 
+    y = "The number of children",
+    caption = "Male, white non-hispanic children born in 2016"
+  ) +
+  viridis::scale_color_viridis(discrete = TRUE)
+
+male_wnp_16
+```
+
+
+
